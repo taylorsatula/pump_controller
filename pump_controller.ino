@@ -80,9 +80,9 @@ void setup() {
 
   // Define server endpoints
   server.on("/control_pump", HTTP_POST, handlePump);
-  // server.on("/control_flow", HTTP_POST, handleWater);
+  server.on("/control_flow", HTTP_POST, handleValve);
   // server.on("/service", HTTP_PATCH, handleService);
-  // server.on("/status", HTTP_GET, handleStatus);
+  server.on("/status", HTTP_GET, handleStatus);
 
 
   long carbonLifeRemaining = readEEPROM(addr_CarbonLifeRemaining, (long)0);
