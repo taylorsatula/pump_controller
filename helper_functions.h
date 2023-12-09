@@ -2,6 +2,7 @@
 #define HELPER_FUNCTIONS_H
 
 // Function Declarations
+void processCommand(String command);
 
 // EEPROM Writing Functions
 void writeEEPROM(int address, int value);

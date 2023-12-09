@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <EEPROM.h>
 #include "pin_mapping.h"
 #include "all_seeing_eye.h"
@@ -74,7 +75,6 @@ void updateFilterLifetimes(unsigned long pumpRuntimeSeconds) {
     writeEEPROM(addr_CarbonLifeRemaining, carbonLifetime);
     writeEEPROM(addr_DiLifeRemaining, diResinLifetime);
 
-    EEPROM.commit();
 }
 
 void resetFilterLifetime(const String &filterType) {
@@ -83,12 +83,10 @@ void resetFilterLifetime(const String &filterType) {
     } else if (filterType == "diResin") {
         writeEEPROM(addr_DiLifeRemaining, max_LifetimeDiResin);
     }
-    EEPROM.commit();
     Serial.println("Filter lifetime reset: " + filterType);
 }
 
 void resetTripMeter() {
     writeEEPROM(addr_TripMeter, 0L);
-    EEPROM.commit();
     Serial.println("Trip meter reset to zero.");
 }

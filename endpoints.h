@@ -2,11 +2,15 @@
 #define ENDPOINTS_H
 
 // Function Declarations
-void handlePump();
-void handleValve();
-void handleStatus();
+void handlePump(String command);
+// void handleValve();
+void handleStatus(String request);
 
 extern unsigned long backwashStartTime;
 extern bool allow_Undervolting;
 
-#endif // ENDPOINTS_H
+// # Backwash ## //
+extern bool is_backwashActive;
+extern unsigned long remainingBackwashDuration;
+
+#endif  // ENDPOINTS_H

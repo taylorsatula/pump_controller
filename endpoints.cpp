@@ -1,7 +1,5 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266HTTPClient.h>
 #include "control_surfaces.h"
 #include "sensor_interfaces.h"
 #include "helper_functions.h"
@@ -11,24 +9,22 @@
 unsigned long backwashStartTime = 0;
 bool allow_Undervolting = false;
 bool is_BackwashActive = false;
+const unsigned long backwashDuration = 15 * 60 * 1000; // 15 minutes
+unsigned long remainingBackwashDuration = 0;
 
 
 
-void handlePump() {
-  if (!server.hasArg("plain")) {
-    Serial.println(F("handle_pump: blank input error"));
-    server.send(400, "application/json", F("{\"error\":\"invalid request\"}"));
-    return;
-  }
 
-  const String receivedData = server.arg("plain");
-  Serial.println("Received data: " + receivedData);
 
-  StaticJsonDocument<256> doc; // Adjust size as needed
-  DeserializationError error = deserializeJson(doc, receivedData);
+void handlePump(String command) {
+  Serial.println("Received data: " + command);
+
+  StaticJsonDocument<1024> doc;  // Adjust size as needed
+  DeserializationError error = deserializeJson(doc, command);
   if (error) {
-    Serial.println(F("JSON deserialization failed"));
-    server.send(400, "application/json", F("{\"error\":\"invalid json\"}"));
+    Serial.println(F("handlePump: JSON deserialization failed"));
+    Serial.println(command);
+    Serial.println(error.c_str());
     return;
   }
 
@@ -37,8 +33,8 @@ void handlePump() {
 
   StaticJsonDocument<256> responseDoc;
 
-  if (doc.containsKey("override")) {
-    const char* override = doc["override"];
+  if (doc.containsKey("allow_Undervolting")) {
+    const char* override = doc["allow_Undervolting"];
     allow_Undervolting = (strcmp(override, "on") == 0);
     responseDoc["override"] = override;
   }
@@ -52,13 +48,12 @@ void handlePump() {
       Serial.println(F("Backwash started"));
       responseDoc["backwash"] = "started";
     } else {
-      const char* errorKey = "error";
       const char* errorValue = is_BatteryHealthy ? "invalid command" : "backwash blocked due to low battery";
       Serial.println(errorValue);
-      responseDoc[errorKey] = errorValue;
+      responseDoc["error"] = errorValue;
       String response;
       serializeJson(responseDoc, response);
-      server.send(is_BatteryHealthy ? 400 : 200, "application/json", response);
+      Serial.println(response);
       return;
     }
   }
@@ -76,7 +71,7 @@ void handlePump() {
         responseDoc["error"] = "invalid state";
         String response;
         serializeJson(responseDoc, response);
-        server.send(400, "application/json", response);
+        Serial.println(response);
         return;
       }
     } else {
@@ -84,7 +79,7 @@ void handlePump() {
       responseDoc["error"] = "pump blocked due to low battery";
       String response;
       serializeJson(responseDoc, response);
-      server.send(200, "application/json", response);
+      Serial.println(response);
       return;
     }
     responseDoc["pump"] = state;
@@ -92,79 +87,80 @@ void handlePump() {
 
   String response;
   serializeJson(responseDoc, response);
-  server.send(200, "application/json", response);
+  Serial.println(response);
 }
 
-void handleValve() {
-  if (!server.hasArg("plain")) {
-    Serial.println(F("handleValve: blank input error"));
-    server.send(400, "application/json", F("{\"error\":\"invalid request\"}"));
-    return;
-  }
 
-  const String receivedData = server.arg("plain");
-  Serial.println("Received data: " + receivedData);
+// void handleValve() {
+//   if (!server.hasArg("plain")) {
+//     Serial.println(F("handleValve: blank input error"));
+//     server.send(400, "application/json", F("{\"error\":\"invalid request\"}"));
+//     return;
+//   }
 
-  StaticJsonDocument<1024> doc; // Size increased for multiple commands
-  DeserializationError error = deserializeJson(doc, receivedData);
-  if (error) {
-    Serial.println(F("JSON deserialization failed"));
-    server.send(400, "application/json", F("{\"error\":\"invalid json\"}"));
-    return;
-  }
+//   const String receivedData = server.arg("plain");
+//   Serial.println("Received data: " + receivedData);
 
-  StaticJsonDocument<1024> responseDoc;
-  JsonArray commands = doc.as<JsonArray>();
+//   StaticJsonDocument<1024> doc; // Size increased for multiple commands
+//   DeserializationError error = deserializeJson(doc, receivedData);
+//   if (error) {
+//     Serial.println(F("JSON deserialization failed"));
+//     server.send(400, "application/json", F("{\"error\":\"invalid json\"}"));
+//     return;
+//   }
 
-  for (JsonVariant command : commands) {
-    if (!command.is<JsonObject>()) {
-      continue; // Skip if not an object
-    }
+//   StaticJsonDocument<1024> responseDoc;
+//   JsonArray commands = doc.as<JsonArray>();
 
-    JsonObject commandObj = command.as<JsonObject>();
+//   for (JsonVariant command : commands) {
+//     if (!command.is<JsonObject>()) {
+//       continue; // Skip if not an object
+//     }
 
-    if (commandObj.containsKey("control") && commandObj.containsKey("valve")) {
-      String valveId = commandObj["control"];
-      String valveAction = commandObj["valve"];
+//     JsonObject commandObj = command.as<JsonObject>();
 
-      int valvePin = referenceValvePinSheet(valveId);
-      if (valvePin == -1) {
-        Serial.print("Invalid valve ID: ");
-        Serial.println(valveId);
-        continue; // Skip to next command
-      }
+//     if (commandObj.containsKey("control") && commandObj.containsKey("valve")) {
+//       String valveId = commandObj["control"];
+//       String valveAction = commandObj["valve"];
 
-      bool state;
-      if (valveAction == "open") {
-        state = true;
-      } else if (valveAction == "close") {
-        state = false;
-      } else {
-        Serial.println(F("Invalid valve action"));
-        continue;
-      }
+//       int valvePin = referenceValvePinSheet(valveId);
+//       if (valvePin == -1) {
+//         Serial.print("Invalid valve ID: ");
+//         Serial.println(valveId);
+//         continue; // Skip to next command
+//       }
 
-      controlValve(valveId, state);
+//       bool state;
+//       if (valveAction == "open") {
+//         state = true;
+//       } else if (valveAction == "close") {
+//         state = false;
+//       } else {
+//         Serial.println(F("Invalid valve action"));
+//         continue;
+//       }
 
-      Serial.print("Valve ");
-      Serial.print(valveId);
-      Serial.print(" ");
-      Serial.println(valveAction);
+//       controlValve(valveId, state);
 
-      // Add response for each valve action
-      JsonObject valveResponse = responseDoc.createNestedObject();
-      valveResponse["valve"] = valveId;
-      valveResponse["action"] = valveAction;
-    } else {
-      Serial.println(F("Invalid command format"));
-      continue;
-    }
-  }
+//       Serial.print("Valve ");
+//       Serial.print(valveId);
+//       Serial.print(" ");
+//       Serial.println(valveAction);
 
-  String response;
-  serializeJson(responseDoc, response);
-  server.send(200, "application/json", response);
-}
+//       // Add response for each valve action
+//       JsonObject valveResponse = responseDoc.createNestedObject();
+//       valveResponse["valve"] = valveId;
+//       valveResponse["action"] = valveAction;
+//     } else {
+//       Serial.println(F("Invalid command format"));
+//       continue;
+//     }
+//   }
+
+//   String response;
+//   serializeJson(responseDoc, response);
+//   server.send(200, "application/json", response);
+// }
 
 // void handleService() {
 //   // Check for valid request
@@ -206,56 +202,67 @@ void handleValve() {
 //   server.send(200, "application/json", response);
 // }
 
-void handleStatus() {
-  // Check for valid request
-  if (!server.hasArg("plain")) {
-    Serial.println(F("handleStatus: blank input error"));
-    server.send(400, "application/json", F("{\"error\":\"invalid request\"}"));
-    return;
-  }
+void handleStatus(String request) {
+  Serial.println("Received data: " + request);
 
-  const String receivedData = server.arg("plain");
-  Serial.println("Received data: " + receivedData);
-
-  // Using dynamic document for flexibility
-  DynamicJsonDocument doc(1024); // Adjust size as needed
-  DeserializationError error = deserializeJson(doc, receivedData);
+  DynamicJsonDocument doc(2048);  // Adjust size as needed
+  DeserializationError error = deserializeJson(doc, request);
   if (error) {
-    Serial.println(F("JSON deserialization failed"));
-    server.send(400, "application/json", F("{\"error\":\"invalid json\"}"));
+    Serial.print(F("handleStatus: JSON deserialization failed: "));
+    Serial.println(error.c_str());
+    Serial.println(request);
     return;
   }
 
   // Prepare response document
   DynamicJsonDocument responseDoc(1024);
 
-  // Flag to determine if any specific key was requested
-  bool specificKeyRequested = false;
-
-  if (doc.containsKey("key1")) {
-    specificKeyRequested = true;
-    auto value = "hello!"; // Fetch value for key1
-    responseDoc["key1"] = value;
+  // Check if "status" key exists and get its value
+  if (!doc.containsKey("status")) {
+    Serial.println(F("handleStatus: 'status' key not found"));
+    responseDoc["error"] = "status key not found";
+    String response;
+    serializeJson(responseDoc, response);
+    Serial.println(response);
+    return;
   }
 
-  if (doc.containsKey("key2")) {
-    specificKeyRequested = true;
-    auto value = "goodbye!"; // Fetch value for key1
-    responseDoc["key_response"] = value;
-  }
+  const char* statusType = doc["status"];  // Using const char* for reliable string comparison
 
-  // If no specific key requested, return all values
-  if (!specificKeyRequested) {
+  if (strcmp(statusType, "") == 0 || strcmp(statusType, "all") == 0) {  // Check for empty or "all"
+    // Return all values
     responseDoc["allow_undervolting"] = allow_Undervolting;
     responseDoc["override_voltage"] = overrideVoltage;
-    responseDoc["override_waterlevel"] = overrideWaterLevel;
-    responseDoc["allow_undervolting"] = allow_Undervolting;
+    responseDoc["override_water_level"] = overrideWaterLevel;
     responseDoc["battery_voltage"] = sampleBattery();
     responseDoc["pump_status"] = is_pumpRunning;
+    responseDoc["is_backwash_active"] = is_BackwashActive;
+    responseDoc["remaining_backwash_duration"] = remainingBackwashDuration;
+  }
+
+  else if (strcmp(statusType, "allow_undervolting") == 0) {
+    responseDoc["allow_undervolting"] = allow_Undervolting;
+  } else if (strcmp(statusType, "override_voltage") == 0) {
+    responseDoc["override_voltage"] = overrideVoltage;
+  } else if (strcmp(statusType, "override_water_level") == 0) {
+    responseDoc["override_water_level"] = overrideWaterLevel;
+  } else if (strcmp(statusType, "battery_voltage") == 0) {
+    responseDoc["battery_voltage"] = sampleBattery();
+  } else if (strcmp(statusType, "water_level") == 0) {
+    responseDoc["battery_voltage"] = sampleWaterLevel();
+  } else if (strcmp(statusType, "pump_status") == 0) {
+    responseDoc["pump_status"] = is_pumpRunning;
+  } else if (strcmp(statusType, "is_backwash_active") == 0) {
+    responseDoc["is_backwash_active"] = is_BackwashActive;
+  } else if (strcmp(statusType, "remaining_backwash_duration") == 0) {
+    responseDoc["remaining_backwash_duration"] = remainingBackwashDuration;
+  } else {
+    Serial.println(F("handleStatus: Unknown status request"));
+    responseDoc["error"] = "unknown";
   }
 
   // Send response
   String response;
   serializeJson(responseDoc, response);
-  server.send(200, "application/json", response);
+  Serial.println(response);
 }
