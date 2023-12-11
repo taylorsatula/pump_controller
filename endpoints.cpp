@@ -13,9 +13,6 @@ const unsigned long backwashDuration = 15 * 60 * 1000; // 15 minutes
 unsigned long remainingBackwashDuration = 0;
 
 
-
-
-
 void handlePump(String command) {
   Serial.println("Received data: " + command);
 
@@ -32,12 +29,6 @@ void handlePump(String command) {
   bool is_BatteryHealthy = allow_Undervolting || batteryVoltage >= voltageCutoff;
 
   StaticJsonDocument<256> responseDoc;
-
-  if (doc.containsKey("allow_Undervolting")) {
-    const char* override = doc["allow_Undervolting"];
-    allow_Undervolting = (strcmp(override, "on") == 0);
-    responseDoc["override"] = override;
-  }
 
   if (doc.containsKey("backwash")) {
     const char* backwashCommand = doc["backwash"];
@@ -162,47 +153,80 @@ void handlePump(String command) {
 //   server.send(200, "application/json", response);
 // }
 
-// void handleService() {
-//   // Check for valid request
-//   if (!server.hasArg("plain")) {
-//     Serial.println(F("handleFunctionName: blank input error"));
-//     server.send(400, "application/json", F("{\"error\":\"invalid request\"}"));
-//     return;
-//   }
+void handleAdmin(String command) {
+  Serial.println("Received data: " + command);
 
-//   const String receivedData = server.arg("plain");
-//   Serial.println("Received data: " + receivedData);
+  StaticJsonDocument<1024> doc;  // Adjust size as needed
+  DeserializationError error = deserializeJson(doc, command);
+  if (error) {
+    Serial.println(F("handleAdmin: JSON deserialization failed"));
+    Serial.println(command);
+    Serial.println(error.c_str());
+    return;
+  }
 
-//   // Adjust size as needed
-//   StaticJsonDocument<256> doc;
-//   DeserializationError error = deserializeJson(doc, receivedData);
-//   if (error) {
-//     Serial.println(F("JSON deserialization failed"));
-//     server.send(400, "application/json", F("{\"error\":\"invalid json\"}"));
-//     return;
-//   }
+  StaticJsonDocument<256> responseDoc;
+  
 
-//   // Main logic starts here
-//   // Replace this with your own processing logic
-//   // Example: float someValue = processSomeData();
-//   // Example: bool is_ConditionMet = checkSomeCondition();
+  // Handle voltage override or manual setting
+  if (doc.containsKey("voltage")) {
+    JsonVariant voltageValue = doc["voltage"];
+    if (voltageValue.is<bool>()) {
+      overrideVoltage = voltageValue.as<bool>();
+      responseDoc["voltage"]["override"] = overrideVoltage;
+    } else if (voltageValue.is<float>()) {
+      manualVoltage = voltageValue.as<float>();
+      overrideVoltage = true;
+      responseDoc["voltage"]["manual"] = manualVoltage;
+    }
+  }
 
-//   // Prepare response document
-//   StaticJsonDocument<256> responseDoc;
+  
+  if (doc.containsKey("undervolt")) {
+    const char* override = doc["undervolt"];
+    allow_Undervolting = (strcmp(override, "on") == 0);
+    responseDoc["override"] = override;
+  }
 
-//   // Handle specific JSON keys and actions
-//   // Example: if (doc.containsKey("someKey")) { /* Your code */ }
+  // Handle water level override or manual setting
+  if (doc.containsKey("water_level")) {
+    JsonVariant waterLevelValue = doc["water_level"];
+    if (waterLevelValue.is<bool>()) {
+      overrideWaterLevel = waterLevelValue.as<bool>();
+      responseDoc["water_level"]["override"] = overrideWaterLevel;
+    } else if (waterLevelValue.is<float>()) {
+      manualWaterLevel = waterLevelValue.as<float>();
+      overrideWaterLevel = true;
+      responseDoc["water_level"]["manual"] = manualWaterLevel;
+    }
+  }
 
-//   // Complete response preparation
-//   // Example: responseDoc["resultKey"] = resultValue;
+  // // Handle reset commands
+  // if (doc.containsKey("reset")) {
+  //   const char* resetCommand = doc["reset"];
+  //   if (strcmp(resetCommand, "trip_meter") == 0) {
+  //     resetTripMeter();
+  //     responseDoc["reset"] = "trip_meter reset";
+  //   } else if (strcmp(resetCommand, "carbon_filter") == 0) {
+  //     resetFilterLifetime("carbonFilter");
+  //     responseDoc["reset"] = "carbon_filter reset";
+  //   } else if (strcmp(resetCommand, "diResin") == 0) {
+  //     resetFilterLifetime("diResin");
+  //     responseDoc["reset"] = "diResin reset";
+  //   }
+  // }
 
-//   // Send response
-//   String response;
-//   serializeJson(responseDoc, response);
-//   server.send(200, "application/json", response);
-// }
+  String response;
+  serializeJson(responseDoc, response);
+  Serial.println(response);
+}
+
 
 void handleStatus(String request) {
+
+  // long carbonLifespan = readEEPROM(addrCarbonFilter, (long)0) / 3600; // Convert seconds to hours
+  // long diLifespan = readEEPROM(addrDiResin, (long)0) / 3600;
+
   Serial.println("Received data: " + request);
 
   DynamicJsonDocument doc(2048);  // Adjust size as needed
@@ -235,9 +259,12 @@ void handleStatus(String request) {
     responseDoc["override_voltage"] = overrideVoltage;
     responseDoc["override_water_level"] = overrideWaterLevel;
     responseDoc["battery_voltage"] = sampleBattery();
+    // responseDoc["water_level"] = sampleWaterLevel();
     responseDoc["pump_status"] = is_pumpRunning;
     responseDoc["is_backwash_active"] = is_BackwashActive;
     responseDoc["remaining_backwash_duration"] = remainingBackwashDuration;
+    // responseDoc["remaining_carbon_lifespan"] = carbonLifespan;
+    // responseDoc["remaining_di_lifespan"] = diLifespan;
   }
 
   else if (strcmp(statusType, "allow_undervolting") == 0) {
@@ -249,13 +276,17 @@ void handleStatus(String request) {
   } else if (strcmp(statusType, "battery_voltage") == 0) {
     responseDoc["battery_voltage"] = sampleBattery();
   } else if (strcmp(statusType, "water_level") == 0) {
-    responseDoc["battery_voltage"] = sampleWaterLevel();
+    // responseDoc["battery_voltage"] = sampleWaterLevel();
   } else if (strcmp(statusType, "pump_status") == 0) {
     responseDoc["pump_status"] = is_pumpRunning;
   } else if (strcmp(statusType, "is_backwash_active") == 0) {
     responseDoc["is_backwash_active"] = is_BackwashActive;
   } else if (strcmp(statusType, "remaining_backwash_duration") == 0) {
     responseDoc["remaining_backwash_duration"] = remainingBackwashDuration;
+  // } else if (strcmp(statusType, "remaining_carbon_lifespan") == 0) {
+  //   responseDoc["remaining_carbon_lifespan"] = carbonLifespan;
+  // } else if (strcmp(statusType, "remaining_di_lifespan") == 0) {
+  //   responseDoc["remaining_di_lifespan"] = diLifespan;
   } else {
     Serial.println(F("handleStatus: Unknown status request"));
     responseDoc["error"] = "unknown";
@@ -266,3 +297,4 @@ void handleStatus(String request) {
   serializeJson(responseDoc, response);
   Serial.println(response);
 }
+

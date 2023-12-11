@@ -4,6 +4,7 @@
 // Function Declarations
 void handlePump(String command);
 // void handleValve();
+void handleAdmin(String command);
 void handleStatus(String request);
 
 extern unsigned long backwashStartTime;

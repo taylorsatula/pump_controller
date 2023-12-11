@@ -33,8 +33,5 @@ void runPump(bool state) {
     tripMeterTotal += pumpRunDuration / 1000; // Convert duration to seconds and add to total
     writeEEPROM(addr_TripMeter, tripMeterTotal);
     updateFilterLifetimes(pumpRunDuration / 1000);
-    #ifdef ESP8266
-      EEPROM.commit();
-    #endif
   }
 }

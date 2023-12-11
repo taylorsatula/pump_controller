@@ -7,6 +7,11 @@ extern const int waterLevelFullValue;
 extern const unsigned long waterLevelCheckInterval;
 extern unsigned long lastWaterLevelCheck;
 
+extern float manualVoltage;
+extern bool overrideVoltage;
+extern float manualWaterLevel;
+extern bool overrideWaterLevel;
+
 // Function Declarations
 float readBatteryVoltage();
 float sampleBattery();

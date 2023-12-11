@@ -1,4 +1,6 @@
 #include <Arduino.h>
+// #include <NewPing.h>
+
 #include "pin_mapping.h"
 #include "all_seeing_eye.h"
 
@@ -8,6 +10,11 @@ const int waterLevelEmptyValue = 0;
 const int waterLevelFullValue = 1022;
 unsigned long lastWaterLevelCheck = 0;
 const unsigned long waterLevelCheckInterval = 5 * 1000; // 5 seconds
+
+float manualVoltage = 0.0;
+bool overrideVoltage = false;
+float manualWaterLevel = 0.0;
+bool overrideWaterLevel = false;
 
 
 
@@ -53,37 +60,7 @@ float sampleBattery() {
 }
 
 
-float sampleWaterLevel() { // this function is very similar to voltage function
-  static int samplespercycle = 50;   // 50 samples instead of 10
-  static int currentsamplecount = 0; // this sensor measures static and (likely) needs to be way smoother
-  static float totalreading = 0;     // tip: once the tool is here play with this for best speed vs. accuracy
-  static unsigned long lastsampletime = 0;
-  static float latestaveragewaterlevel = 0;
-
-  const int sampleinterval = 100;
-
-  if (overrideVoltage) {
-    currentsamplecount = 0;
-    totalreading = 0;
-    latestaveragewaterlevel = manualWaterLevel; // this is bypassed bc it returns a variable set at a global level
-    return manualWaterLevel;
-  }
-
-  unsigned long currenttime = millis();
-  if (currenttime - lastsampletime >= sampleinterval) {
-    lastsampletime = currenttime;
-    totalreading += analogRead(PIN_SENSOR_WATERLEVEL);
-
-    currentsamplecount++;
-
-    if (currentsamplecount = samplespercycle) {
-      int currentreading = totalreading / samplespercycle;
-      int percentage = map(currentreading, waterLevelEmptyValue, waterLevelFullValue, 0, 100);
-      latestaveragewaterlevel = percentage;
-
-      currentsamplecount = 0;
-      totalreading = 0;
-    }
-  }
-  return latestaveragewaterlevel;
-}
+// void sampleWaterLevel() {
+//   current_WaterLevel = sonar.ping_in();
+//   return current_waterLevel;
+// }
